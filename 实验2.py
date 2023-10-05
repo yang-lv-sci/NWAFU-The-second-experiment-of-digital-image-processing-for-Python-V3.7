@@ -47,6 +47,14 @@ def standard_deviation(image):
 def sharpness(image):
     return np.max(cv2.convertScaleAbs(cv2.Laplacian(image, cv2.CV_64F)))
 
+def add_gaussian_noise(image, sigma, weight):
+    row, col, ch = image.shape
+    mean = 0
+    gauss = np.random.normal(mean, sigma, (row, col, ch))
+    noisy = np.clip(image + gauss * weight, 0, 255)
+    return noisy.astype(np.uint8)
+
+
 def homomorphic_filter(img, gamma_l, gamma_h, c, d0):
     img_log = np.log1p(np.array(img, dtype="float"))
     rows, cols = img_log.shape
@@ -67,20 +75,35 @@ def homomorphic_filter(img, gamma_l, gamma_h, c, d0):
 
     return img_out
 
+def reset_parameters():
+    gamma_l_slider.set(0)  # 设置为初始值
+    gamma_h_slider.set(0)  # 设置为初始值
+    c_slider.set(1)  # 设置为初始值
+    d0_slider.set(1)  # 设置为初始值
+    noise_weight_slider.set(0)  # 设置为初始值
+    noise_sigma_slider.set(0)  # 设置为初始值
+    update_image()  # 调用 update_image 函数来重置图像和标签
+
+
 def update_image():
+    noise_weight = noise_weight_slider.get() / 100
+    noise_sigma = noise_sigma_slider.get()
+    
+    noisy_img = add_gaussian_noise(img_rgb, noise_sigma, noise_weight)
+    
     gamma_l = gamma_l_slider.get() / 10
     gamma_h = gamma_h_slider.get() / 10
     c = c_slider.get() / 10
     d0 = d0_slider.get()
 
-    filtered_channels = [homomorphic_filter(img_rgb[:,:,i], gamma_l, gamma_h, c, d0) for i in range(3)]
+    filtered_channels = [homomorphic_filter(noisy_img[:,:,i], gamma_l, gamma_h, c, d0) for i in range(3)]
     filtered = np.stack(filtered_channels, axis=2)
 
-    orig_float = img_rgb.astype('float')
+    noisy_float = noisy_img.astype('float')
     filtered_float = filtered.astype('float')
 
-    nmse_value = normalized_mse(orig_float, filtered_float)
-    psnr_value = psnr(orig_float, filtered_float)
+    nmse_value = normalized_mse(noisy_float, filtered_float)
+    psnr_value = psnr(noisy_float, filtered_float)
     entropy_value = entropy(filtered)
     avg_grad_value = average_gradient(filtered)
     std_dev_value = standard_deviation(filtered)
@@ -98,6 +121,7 @@ def update_image():
     label_filtered.imgtk = imgtk
     label_filtered.configure(image=imgtk)
 
+
 root = tk.Tk()
 root.title("Homomorphic Filter GUI")
 
@@ -109,10 +133,10 @@ if img is None:
 
 img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-gamma_l_slider = tk.Scale(root, from_=0, to=20, label='Gamma L', orient=tk.HORIZONTAL, command=lambda x: update_image(), resolution=0.1)
+gamma_l_slider = tk.Scale(root, from_=1, to=20, label='Gamma L', orient=tk.HORIZONTAL, command=lambda x: update_image(), resolution=0.1)
 gamma_l_slider.pack(fill="both")
 
-gamma_h_slider = tk.Scale(root, from_=0, to=20, label='Gamma H', orient=tk.HORIZONTAL, command=lambda x: update_image(), resolution=0.1)
+gamma_h_slider = tk.Scale(root, from_=1, to=20, label='Gamma H', orient=tk.HORIZONTAL, command=lambda x: update_image(), resolution=0.1)
 gamma_h_slider.pack(fill="both")
 
 c_slider = tk.Scale(root, from_=1, to=10, label='C', orient=tk.HORIZONTAL, command=lambda x: update_image(), resolution=0.1)
@@ -120,6 +144,15 @@ c_slider.pack(fill="both")
 
 d0_slider = tk.Scale(root, from_=1, to=100, label='D0', orient=tk.HORIZONTAL, command=lambda x: update_image(), resolution=0.1)
 d0_slider.pack(fill="both")
+
+noise_weight_slider = tk.Scale(root, from_=1, to=100, label='Noise Weight', orient=tk.HORIZONTAL, resolution=1,command=lambda x: update_image())
+noise_weight_slider.pack(fill="both")
+
+noise_sigma_slider = tk.Scale(root, from_=1, to=100, label='Noise Sigma', orient=tk.HORIZONTAL, resolution=1,command=lambda x: update_image())
+noise_sigma_slider.pack(fill="both")
+
+reset_button = tk.Button(root, text="Reset", command=reset_parameters)
+reset_button.pack()
 
 nmse_label = tk.Label(root, text="NMSE:")
 nmse_label.pack()
